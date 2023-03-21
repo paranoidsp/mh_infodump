@@ -1,36 +1,27 @@
+#!/usr/bin/env python3
 # Get all PMQs about mental health
 
 import requests as r
 import lxml.html as lh
-from typing import Dict
+from typing import Dict, List
+from pprint import pprint
+import os
 
 URL = "https://loksabha.nic.in/Questions/Qtextsearch.aspx"
 TABLE_XPATH = '//*[@id="ContentPlaceHolder1_tblMember"]/tr/td/table'
+TOPIC = "mental health"
+FILE_DOWNLOAD_PATH = "files"
 
 
-def get_pmqs():
+def get_pmqs(only_headers: bool = False) -> None:
     """
     Get PMQs about mental health
     """
-    # TODO handle case where results are not sorted by date by default
-    # currently assumes that resuts will be sorted by date, latest first
-    # so only reading questions till the last checked
-
-    # Plan
-    # Search for mental health questions
-    # Get table, Q.NO and date
-    # If already read, break and stop here
-    # If not already read, download the english pdf, put it in folder if it
-    # does not already exist
-    # If folder already exists, delete
-    # Paginate
-    # Update csv
-
     # Get the viewstate token
     resp = r.get(URL)
     parsed_resp = lh.fromstring(resp.text)
 
-    data = {
+    INITIAL_DATA = {
         "__EVENTTARGET": "",
         "__EVENTARGUMENT": "",
         "__VIEWSTATE": parsed_resp.get_element_by_id("__VIEWSTATE").value,
@@ -41,37 +32,145 @@ def get_pmqs():
         "__EVENTVALIDATION": parsed_resp.get_element_by_id("__EVENTVALIDATION").value,
         "ctl00$txtSearchGlobal": "",
         "ctl00$ContentPlaceHolder1$ddlfile": ".pdf",
-        "ctl00$ContentPlaceHolder1$TextBox1": "mental health",
-        "ctl00$ContentPlaceHolder1$searchbtn": "search",
+        "ctl00$ContentPlaceHolder1$TextBox1": TOPIC,
         "ctl00$ContentPlaceHolder1$btn": "allwordbtn",
         "ctl00$ContentPlaceHolder1$btn1": "titlebtn",
         "ctl00$ContentPlaceHolder1$txtpage": "1",
     }
 
+    # Getting a specific page requires the Go button
+    search_data = INITIAL_DATA
+    search_data["ctl00$ContentPlaceHolder1$btngo"] = "Go"
+
     # search page 1
-    search_resp = r.post(URL, data)
+    search_resp = r.post(URL, search_data)
     parsed_search = lh.fromstring(search_resp.text)
 
     # Get total number of pages
     num_pages = get_num_pages(parsed_search)
     print(f"Found {num_pages} pages of results, fetching them all...")
 
-    # get headers
-    headers = get_headers(parsed_search)
-
-    total = 0
-
     results = []
+    results_by_date = {}
 
     # paginate through them, get first row again just because I'm lazy
     for page in range(1, num_pages + 1):
-        rows = get_results_from_page(data, page)
+        rows = get_results_from_page(search_data, page)
+        for row in rows:
+            q_info = get_q_info(row.xpath("td"))
+
+            if q_info == {}:
+                print(f"Failed to parse row")
+                exit(0)
+
+            if not q_info["date"] in results_by_date:
+                results_by_date[q_info["date"]] = {}
+
+            results_by_date[q_info["date"]][q_info["q_no"]] = q_info
+
+            print(
+                f"Found question number {q_info['q_no']}, by {q_info['members']} on {q_info['date']}"
+            )
         print(f"=> Found {len(rows)} results from page {page}")
-        total += len(rows)
         results.extend(rows)
 
     print("----------------------------------")
+    print(f"Results by date")
+    pprint(results_by_date)
     print(f"Found a total of {len(results)} results!")
+
+    save_files(results_by_date)
+
+
+def save_files(results):
+    base_path = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), FILE_DOWNLOAD_PATH
+    )
+
+    if not os.path.exists(base_path):
+        os.mkdir(base_path)
+
+    print(f"Received {len(results)}")
+    print("----------------------------------")
+    print("Saving files")
+
+    changed = {}
+
+    for date, questions in results.items():
+        print(f"Checking date {date}")
+        for q_no, q_info in questions.items():
+            print(f"=> Checking question {q_no}")
+            # file path
+            date_path = os.path.join(base_path, date)
+            file_path = os.path.join(date_path, str(q_no) + ".pdf")
+
+            # Exact file exists, skip
+            if os.path.isfile(file_path):
+                print(f"    Already Exists")
+                continue
+            else:
+                # log changes
+                if not date in changed:
+                    changed[date] = []
+
+                changed[date].append(q_no)
+                # if date folder doesn't exist, create it
+                if not os.path.isdir(date_path):
+                    os.mkdir(date_path)
+
+                # Get the file
+                resp = r.get(q_info["url"], allow_redirects=True)
+
+                with open(file_path, "wb") as f:
+                    f.write(resp.content)
+
+                print(f"  ... File Written!")
+
+    total_changed = sum([len(x) for x in changed.values()])
+    print(f"Found {total_changed} changes!")
+
+
+def get_q_info(columns) -> Dict:
+    q_info = {}
+
+    # Since q_no and date are what we want to use to find file path, we
+    # must validate them
+
+    # Q_no is the text in the second link
+    # validate that it is an int
+    try:
+        q_info["q_no"] = int(columns[0].xpath("a")[1].text)
+    except ValueError:
+        print("Parsing error: Website format seems to have changed")
+        return {}
+
+    # url needs to be for the english version
+    for link in columns[1].xpath("a"):
+        if link.text == "PDF/WORD":
+            q_info["url"] = link.attrib["href"]
+
+    # date, validate to make sure it looks good
+    for link in columns[2].xpath("a"):
+        # There are two links in each columns
+        # First one just has id
+        # Second one has the actual text and the link itself
+        # We want the text
+        if "href" in link.attrib:
+            q_info["date"] = link.text
+            assert (
+                len(q_info["date"].split(".")) == 3
+            ), "Parsing error: Website format seems to have changed"
+
+    # ministry
+    q_info["ministry"] = columns[3].xpath("a")[1].text
+
+    # Members and subject
+    # Members are each on separate hyperlink tags
+    # strip to avoid all the extra spaces
+    q_info["members"] = "".join(columns[4].itertext()).strip()
+    q_info["subject"] = "".join(columns[5].itertext()).strip()
+
+    return q_info
 
 
 def get_headers(page: lh.HtmlElement):
