@@ -24,7 +24,7 @@ def get_pmqs() -> None:
     Get PMQs about mental health
     """
     # Get the viewstate token
-    resp = r.get(URL)
+    resp = r.get(URL, timeout=5)
     parsed_resp = lh.fromstring(resp.text)
 
     INITIAL_DATA = {
@@ -49,7 +49,7 @@ def get_pmqs() -> None:
     search_data["ctl00$ContentPlaceHolder1$btngo"] = "Go"
 
     # search page 1
-    search_resp = r.post(URL, search_data)
+    search_resp = r.post(URL, search_data, timeout=10)
     parsed_search = lh.fromstring(search_resp.text)
 
     # Get total number of pages
@@ -125,7 +125,7 @@ def save_files(results):
                     os.mkdir(date_path)
 
                 # Get the file
-                resp = r.get(q_info["url"], allow_redirects=True)
+                resp = r.get(q_info["url"], allow_redirects=True, timeout=5)
 
                 with open(file_path, "wb") as f:
                     f.write(resp.content)
@@ -192,7 +192,7 @@ def get_results_from_page(data: Dict[str, str], page: int):
     data["ctl00$ContentPlaceHolder1$txtpage"] = str(page)
 
     # fetch and parse
-    search_resp = r.post(URL, data)
+    search_resp = r.post(URL, data, timeout=10)
 
     return parse_page(lh.fromstring(search_resp.text))
 
