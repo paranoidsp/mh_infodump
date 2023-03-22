@@ -9,7 +9,7 @@ import requests as r
 # So ignore the magic xpath parsing all over the page, and fix the script if
 # the website changes.
 import lxml.html as lh
-from typing import Dict, List
+from typing import Dict
 from pprint import pprint
 import os
 
@@ -19,7 +19,7 @@ TOPIC = "mental health"
 FILE_DOWNLOAD_PATH = "files"
 
 
-def get_pmqs(only_headers: bool = False) -> None:
+def get_pmqs() -> None:
     """
     Get PMQs about mental health
     """
