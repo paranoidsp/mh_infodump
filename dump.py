@@ -2,6 +2,12 @@
 # Get all PMQs about mental health
 
 import requests as r
+
+# Okay, I know bs4 exists, but I assumed lxml was in the python stdlib
+# and that I wouldn't need to install it for github actions, but turns out it
+# isn't, and now sunk cost fallacy has me
+# So ignore the magic xpath parsing all over the page, and fix the script if
+# the website changes.
 import lxml.html as lh
 from typing import Dict, List
 from pprint import pprint
