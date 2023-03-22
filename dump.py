@@ -16,7 +16,7 @@ import os
 URL = "https://loksabha.nic.in/Questions/Qtextsearch.aspx"
 TABLE_XPATH = '//*[@id="ContentPlaceHolder1_tblMember"]/tr/td/table'
 TOPIC = "mental health"
-FILE_DOWNLOAD_PATH = "files"
+FILE_DOWNLOAD_PATH = "files/lok-sabha"
 
 
 def get_pmqs() -> None:
