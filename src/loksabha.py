@@ -25,10 +25,21 @@ class LokSabhaQuestions:
         self.table_xpath = LS_TABLE_XPATH
 
     def get_qs(self) -> None:
-        # Get the viewstate token
+
+        # Lok Sabha search page needs a bunch of session variables to be sent along
+        # with a search query. These variables change each time the page is loaded.
+        # So we'll first get the page without searching, store those variables and use
+        # them to send an actual search query
+        # This is generally the standard scraping technique for aspx forms
+        # You could do this cleaner with the scrapy library, but 
+        # this will do for a simple form like this
+        
+        # Load the basic search page
         resp = r.get(self.url, timeout=5)
         parsed_resp = lh.fromstring(resp.text)
 
+        # Set up our search query, and store the special variables from the search page
+        # The rest of them are captured from a search run through the webpage
         INITIAL_DATA = {
             "__EVENTTARGET": "",
             "__EVENTARGUMENT": "",
@@ -97,8 +108,7 @@ class LokSabhaQuestions:
 
         if not os.path.exists(base_path):
             os.mkdir(base_path)
-
-            print(f"Received {len(self.results_by_date)}")
+            
         print("----------------------------------")
         print("Saving files")
 
